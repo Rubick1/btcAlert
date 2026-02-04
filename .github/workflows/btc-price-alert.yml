@@ -2,6 +2,8 @@ name: BTC Price Alert
 
 on:
   schedule:
+    # Every day at 9:00 AM Beijing time (UTC+8) = 1:00 AM UTC
+    - cron: '0 1 * * *'
     # Every 3 hours
     - cron: '0 */3 * * *'
   workflow_dispatch: # Allow manual trigger
@@ -13,9 +15,7 @@ jobs:
       - name: Check BTC Price and Alert
         env:
           BARK_KEY: ${{ secrets.BARK_KEY }}
-          PRICE_THRESHOLD: ${{ vars.BTC_PRICE_THRESHOLD || '70000' }}
         run: |
-          # Fetch BTC price from CoinGecko
           RESPONSE=$(curl -s 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
           PRICE=$(echo "$RESPONSE" | jq -r '.bitcoin.usd')
 
@@ -25,23 +25,46 @@ jobs:
           fi
 
           echo "Current BTC price: \$$PRICE"
-          echo "Threshold: \$$PRICE_THRESHOLD"
 
-          if [ "$(echo "$PRICE < $PRICE_THRESHOLD" | bc -l)" -eq 1 ]; then
+          # Check which cron triggered this run
+          # Daily 9AM Beijing (1AM UTC): always send price
+          HOUR_UTC=$(date -u +%H)
+          MINUTE_UTC=$(date -u +%M)
+
+          IS_DAILY="false"
+          if [ "$HOUR_UTC" = "01" ] && [ "$MINUTE_UTC" -lt "15" ]; then
+            IS_DAILY="true"
+          fi
+
+          # For manual trigger, treat as daily report
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IS_DAILY="true"
+          fi
+
+          SEND="false"
+          TITLE=""
+          BODY=""
+
+          if [ "$IS_DAILY" = "true" ]; then
+            SEND="true"
+            TITLE="BTC 早报"
+            BODY="当前 BTC 价格: \$${PRICE}"
+          fi
+
+          # Every 3 hours: alert if price < 70000
+          if [ "$(echo "$PRICE < 70000" | bc -l)" -eq 1 ]; then
+            SEND="true"
             TITLE="BTC 价格预警"
-            BODY="BTC 当前价格 \$${PRICE}，已低于 \$${PRICE_THRESHOLD}"
-            echo "Alert: $BODY"
+            BODY="BTC 当前价格 \$${PRICE}，已跌破 \$70,000"
+          fi
 
-            if [ -z "$BARK_KEY" ]; then
-              echo "BARK_KEY not set, skipping notification"
-              exit 0
-            fi
-
+          if [ "$SEND" = "true" ]; then
+            echo "Sending notification: $TITLE - $BODY"
             ENCODED_TITLE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${TITLE}'))")
             ENCODED_BODY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${BODY}'))")
             curl -s "https://api.day.app/${BARK_KEY}/${ENCODED_TITLE}/${ENCODED_BODY}?group=btc-price"
             echo ""
             echo "Bark notification sent!"
           else
-            echo "BTC \$$PRICE >= \$$PRICE_THRESHOLD, no alert."
+            echo "No alert needed. Price \$$PRICE is above \$70,000."
           fi
