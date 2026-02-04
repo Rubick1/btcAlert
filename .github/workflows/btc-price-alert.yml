@@ -1,0 +1,47 @@
+name: BTC Price Alert
+
+on:
+  schedule:
+    # Every 3 hours
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-price:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check BTC Price and Alert
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          PRICE_THRESHOLD: ${{ vars.BTC_PRICE_THRESHOLD || '70000' }}
+        run: |
+          # Fetch BTC price from CoinGecko
+          RESPONSE=$(curl -s 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
+          PRICE=$(echo "$RESPONSE" | jq -r '.bitcoin.usd')
+
+          if [ -z "$PRICE" ] || [ "$PRICE" = "null" ]; then
+            echo "Failed to fetch BTC price"
+            exit 1
+          fi
+
+          echo "Current BTC price: \$$PRICE"
+          echo "Threshold: \$$PRICE_THRESHOLD"
+
+          if [ "$(echo "$PRICE < $PRICE_THRESHOLD" | bc -l)" -eq 1 ]; then
+            TITLE="BTC 价格预警"
+            BODY="BTC 当前价格 \$${PRICE}，已低于 \$${PRICE_THRESHOLD}"
+            echo "Alert: $BODY"
+
+            if [ -z "$BARK_KEY" ]; then
+              echo "BARK_KEY not set, skipping notification"
+              exit 0
+            fi
+
+            ENCODED_TITLE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${TITLE}'))")
+            ENCODED_BODY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${BODY}'))")
+            curl -s "https://api.day.app/${BARK_KEY}/${ENCODED_TITLE}/${ENCODED_BODY}?group=btc-price"
+            echo ""
+            echo "Bark notification sent!"
+          else
+            echo "BTC \$$PRICE >= \$$PRICE_THRESHOLD, no alert."
+          fi
