@@ -32,7 +32,8 @@ jobs:
           MINUTE_UTC=$(date -u +%M)
 
           IS_DAILY="false"
-          if [ "$HOUR_UTC" = "01" ] && [ "$MINUTE_UTC" -lt "15" ]; then
+          # GitHub Actions cron can be delayed up to 1 hour, so check 01:00-01:59 UTC
+          if [ "$HOUR_UTC" = "01" ]; then
             IS_DAILY="true"
           fi
 
