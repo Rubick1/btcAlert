@@ -52,11 +52,11 @@ jobs:
             BODY="当前 BTC 价格: \$${PRICE}"
           fi
 
-          # Every 3 hours: alert if price < 60000
-          if [ "$(echo "$PRICE < 60000" | bc -l)" -eq 1 ]; then
+          # Every 3 hours: alert if price < 50000
+          if [ "$(echo "$PRICE < 50000" | bc -l)" -eq 1 ]; then
             SEND="true"
             TITLE="BTC 价格预警"
-            BODY="BTC 当前价格 \$${PRICE}，已跌破 \$60,000"
+            BODY="BTC 当前价格 \$${PRICE}，已跌破 \$50,000"
           fi
 
           if [ "$SEND" = "true" ]; then
@@ -67,5 +67,5 @@ jobs:
             echo ""
             echo "Bark notification sent!"
           else
-            echo "No alert needed. Price \$$PRICE is above \$70,000."
+            echo "No alert needed. Price \$$PRICE is above \$50,000."
           fi
